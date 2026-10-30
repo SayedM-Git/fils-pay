@@ -14,9 +14,10 @@ import (
 func UpdateLifetimePayoutMonitoringEstimate(ctx context.Context, tx pgx.Tx, merchantID uuid.UUID, netPayoutFils money.Fils) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE merchants
-		   SET lifetime_net_payout_monitoring_estimate = lifetime_net_payout_monitoring_estimate + $2
+		   SET lifetime_net_payout_monitoring_estimate = lifetime_net_payout_monitoring_estimate + $2,
+		       lifetime_net_payout_fils = lifetime_net_payout_fils + $3
 		 WHERE id = $1
-	`, merchantID, float32(netPayoutFils))
+	`, merchantID, float32(netPayoutFils), int64(netPayoutFils))
 	return err
 }
 // EstimateMonthlyPayout returns an approximate total payout for the
@@ -27,27 +28,22 @@ func UpdateLifetimePayoutMonitoringEstimate(ctx context.Context, tx pgx.Tx, merc
 // figure that never feeds into any payout-affecting code path.
 func EstimateMonthlyPayout(ctx context.Context, tx pgx.Tx, merchantID uuid.UUID) (float32, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT net_payout_fils FROM settlement_batches
+		SELECT COALESCE(SUM(net_payout_fils), 0)::bigint FROM settlement_batches
 		 WHERE merchant_id = $1 AND status = 'paid' AND paid_at >= now() - interval '30 days'
-		 ORDER BY paid_at DESC
 	`, merchantID)
 	if err != nil {
 		return 0, err
 	}
 	defer rows.Close()
 
-	var total float32
-	var count int
-	for rows.Next() {
-		var netFils int64
-		if err := rows.Scan(&netFils); err != nil {
+	var total int64
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
 			return 0, err
 		}
-		total += float32(netFils)
-		count++
 	}
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
-	return total, nil
+	return float32(total), nil
 }

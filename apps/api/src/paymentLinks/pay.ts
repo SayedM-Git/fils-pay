@@ -29,12 +29,9 @@ interface LinkStatusRow {
   expires_at: Date;
 }
 
-/** A pay request is judged against when the buyer pressed pay, so a
- * retry that lands after midnight is not penalised. */
-export function expiryReferenceTime(submittedAt?: string): Date {
-  if (!submittedAt) return new Date();
-  const parsed = new Date(submittedAt);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+/** Expiry is enforced against server time; a public client timestamp is untrusted. */
+export function expiryReferenceTime(_submittedAt?: string): Date {
+  return new Date();
 }
 
 /**
@@ -54,7 +51,7 @@ export function expiryReferenceTime(submittedAt?: string): Date {
 export async function payPaymentLink(
   pool: Pool,
   acquirer: AcquirerSimulator,
-  config: { paymentLinkReservationTimeoutSeconds: number },
+  _config: { paymentLinkReservationTimeoutSeconds: number },
   input: PayPaymentLinkInput,
 ): Promise<PayPaymentLinkResult> {
   const expiryCheckTime = expiryReferenceTime(input.submittedAt);
@@ -66,18 +63,15 @@ export async function payPaymentLink(
     `UPDATE payment_links
         SET status = 'reserved', reserved_at = now()
       WHERE token = $1
-        AND (
-             status = 'active'
-             OR (status = 'reserved' AND reserved_at < now() - ($2 || ' seconds')::interval)
-            )
+        AND status = 'active'
         AND expires_at > $3
       RETURNING id, merchant_id, amount_fils, reference`,
-    [input.token, config.paymentLinkReservationTimeoutSeconds, expiryCheckTime],
+    [input.token, expiryCheckTime],
   );
 
   const claimedRow = claimResult.rows[0];
   if (!claimedRow) {
-    return classifyClaimFailure(pool, input.token, config.paymentLinkReservationTimeoutSeconds, expiryCheckTime);
+    return classifyClaimFailure(pool, input.token, expiryCheckTime);
   }
 
   const link = {
@@ -202,7 +196,6 @@ async function releaseReservation(pool: Pool, linkId: string): Promise<void> {
 async function classifyClaimFailure(
   pool: Pool,
   token: string,
-  reservationTimeoutSeconds: number,
   expiryCheckTime: Date,
 ): Promise<PayPaymentLinkResult> {
   const result = await pool.query<LinkStatusRow>(`SELECT status, expires_at FROM payment_links WHERE token = $1`, [
@@ -223,10 +216,8 @@ async function classifyClaimFailure(
     return { statusCode: 410, body: { error: "payment_link_expired" } };
   }
   if (row.status === "reserved") {
-    // A concurrent claim attempt raced us and won between our own UPDATE's
-    // failure and this SELECT. It's still within the timeout (if it
-    // weren't, our claim UPDATE would have matched it) — reachable only in
-    // a genuine race, not a stale read.
+    // Another attempt owns the link. Reserved links are never released on
+    // a timer because the acquirer call may still be in flight.
     return { statusCode: 409, body: { error: "payment_link_processing" } };
   }
   // Defensive fallback, should be unreachable given the claim UPDATE's

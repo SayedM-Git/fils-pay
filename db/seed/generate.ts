@@ -635,10 +635,14 @@ export async function generate(pool: Pool): Promise<SeedSummary> {
         for (const batchNet of [...highVolumeDayNets, netFils]) {
           lifetimeEstimate = Math.fround(lifetimeEstimate + Math.fround(Number(batchNet)));
         }
-        await client.query(`UPDATE merchants SET lifetime_net_payout_monitoring_estimate = $2 WHERE id = $1`, [
-          merchantId,
-          lifetimeEstimate,
-        ]);
+        const lifetimeFils = [...highVolumeDayNets, netFils].reduce((sum, batchNet) => sum + BigInt(batchNet), 0n);
+        await client.query(
+          `UPDATE merchants
+              SET lifetime_net_payout_monitoring_estimate = $2,
+                  lifetime_net_payout_fils = $3
+            WHERE id = $1`,
+          [merchantId, lifetimeEstimate, lifetimeFils.toString()],
+        );
 
         // A few outbox events, enqueued inside this same transaction as the
         // writes that produced them. Payload shapes here must match the

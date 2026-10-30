@@ -73,7 +73,8 @@ export async function processRefund(
     const txnResult = await client.query<RefundTransactionRow>(
       `SELECT id, merchant_id, status, amount_fils, captured_fils, refunded_fils, acquirer_reference
          FROM transactions
-        WHERE id = $1`,
+        WHERE id = $1
+        FOR UPDATE`,
       [input.transactionId],
     );
     const txn = txnResult.rows[0];
@@ -87,7 +88,13 @@ export async function processRefund(
     const capturedFils = toFils(Number(txn.captured_fils));
     const refundedFils = toFils(Number(txn.refunded_fils));
 
-    const refundableFils = subtractFils(amountAuthorized, refundedFils);
+    const reservationResult = await client.query<{ reserved_fils: string }>(
+      `SELECT COALESCE(SUM(amount_fils), 0)::text AS reserved_fils
+         FROM refund_reservations WHERE transaction_id = $1`,
+      [txn.id],
+    );
+    const reservedFils = toFils(Number(reservationResult.rows[0]?.reserved_fils ?? 0));
+    const refundableFils = subtractFils(subtractFils(capturedFils, refundedFils), reservedFils);
 
     const validation = validateRefundRequest(
       {
@@ -105,6 +112,12 @@ export async function processRefund(
       await completeIdempotencyKey(client, claim.row.id, { statusCode, body: validation });
       return { kind: "settled" as const, result: { statusCode, body: validation } };
     }
+
+    await client.query(
+      `INSERT INTO refund_reservations (idempotency_key_id, transaction_id, amount_fils)
+       VALUES ($1, $2, $3)`,
+      [claim.row.id, txn.id, validation.amountFils],
+    );
 
     // The fee this transaction was actually charged at capture, read from
     // the ledger rather than recomputed from the merchant's current
@@ -153,26 +166,39 @@ export async function processRefund(
   return withTransaction(pool, async (client) => {
     if (acquirerResult.outcome === "declined") {
       const body = { error: "refund_declined" };
+      await client.query(`DELETE FROM refund_reservations WHERE idempotency_key_id = $1`, [prepared.claimId]);
       await completeIdempotencyKey(client, prepared.claimId, { statusCode: 402, body });
       return { statusCode: 402, body };
     }
     if (acquirerResult.outcome === "error") {
       const body = { error: "acquirer_unavailable" };
+      await client.query(`DELETE FROM refund_reservations WHERE idempotency_key_id = $1`, [prepared.claimId]);
       await failIdempotencyKey(client, prepared.claimId, { statusCode: 502, body });
       return { statusCode: 502, body };
     }
 
-    const newRefundedTotal = addFils(prepared.refundedFils, prepared.requestedAmount);
+    const lockedResult = await client.query<{ captured_fils: string | number; refunded_fils: string | number; amount_fils: string | number }>(
+      `SELECT captured_fils, refunded_fils, amount_fils FROM transactions WHERE id = $1 FOR UPDATE`,
+      [prepared.transactionId],
+    );
+    const lockedTxn = lockedResult.rows[0];
+    if (!lockedTxn) throw new Error("processRefund: transaction disappeared after acquirer success");
+    const capturedNow = toFils(Number(lockedTxn.captured_fils));
+    const refundedNow = toFils(Number(lockedTxn.refunded_fils));
+    const newRefundedTotal = addFils(refundedNow, prepared.requestedAmount);
     const newStatus = nextStatusAfterRefund({
-      amountFils: prepared.amountAuthorized,
-      capturedFils: prepared.capturedFils,
+      amountFils: toFils(Number(lockedTxn.amount_fils)),
+      capturedFils: capturedNow,
       refundedTotalFils: newRefundedTotal,
     });
-    const feeReversedFils = calculateRefundFee(
-      prepared.capturedFils,
-      prepared.feeChargedFils,
-      prepared.requestedAmount,
+    const reversedResult = await client.query<{ fee_fils: string }>(
+      `SELECT COALESCE(SUM(fee_reversed_fils), 0)::text AS fee_fils
+         FROM refunds WHERE transaction_id = $1 AND status = 'succeeded'`,
+      [prepared.transactionId],
     );
+    const reversedSoFar = toFils(Number(reversedResult.rows[0]?.fee_fils ?? 0));
+    const feeReversedTotal = calculateRefundFee(capturedNow, prepared.feeChargedFils, newRefundedTotal);
+    const feeReversedFils = subtractFils(feeReversedTotal, reversedSoFar);
 
     const refundResult = await client.query<{ id: string; occurred_at: Date }>(
       `INSERT INTO refunds
@@ -201,6 +227,7 @@ export async function processRefund(
       newRefundedTotal,
       newStatus,
     ]);
+    await client.query(`DELETE FROM refund_reservations WHERE idempotency_key_id = $1`, [prepared.claimId]);
 
     // Double-entry reversal, mirroring capture's legs with the directions
     // swapped. ledger_entries has CHECK (amount_fils > 0), so a reversal
@@ -228,7 +255,7 @@ export async function processRefund(
     // The timeline records what this refund did to the captured amount, so
     // it stays readable regardless of what the status column ends up
     // saying: everything captured has now gone back, or only part of it has.
-    const eventType = compareFils(newRefundedTotal, prepared.capturedFils) >= 0 ? "refunded" : "refund_partial";
+    const eventType = compareFils(newRefundedTotal, capturedNow) >= 0 ? "refunded" : "refund_partial";
 
     await recordTransactionEvent(client, {
       transactionId: prepared.transactionId,

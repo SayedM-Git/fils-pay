@@ -1,13 +1,9 @@
-# Local development stack for FilsPay. Brings up Postgres plus the three
-# services that talk to it directly (apps/api, apps/settlement,
-# apps/reporting) and runs the migration/seed jobs once against a fresh
-# database. apps/web and apps/admin are not included here — neither one
-# opens its own database connection; they call apps/api over HTTP.
+# FilsPay stack: Postgres, API, settlement, reporting, merchant web app,
+# and admin console. Seed data is opt-in; never seed a hosted database.
 #
 #
 # The hosted demo box runs this same file. Service settings that aren't
-# listed under each service's `environment:` come from ops/.env.docker,
-# which compose picks up automatically. — AM, July
+# listed under each service's `environment:` come from ops/.env.docker.
 #
 # — M?: Dockerfile.node / Dockerfile.go live next to this file. if they're
 # missing for you, pull main again.
@@ -18,11 +14,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: filspay
-      POSTGRES_PASSWORD: filspay_dev_password
-      POSTGRES_DB: filspay
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-filspay}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-filspay_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-filspay}
     volumes:
       - filspay_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -46,7 +40,7 @@ services:
       # bridge network and never talk to the database over a link that
       # leaves the host, so there's no path for this connection to be
       # intercepted in this environment.
-      DATABASE_URL: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable}
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,12 +50,13 @@ services:
   # AM: the seed only truncates its own fixture tables, so pointing this at a
   # shared database is fine. MK: correct. (see RUNBOOK)
   seed:
+    profiles: ["dev-seed"]
     build:
       context: ..
       dockerfile: ops/Dockerfile.node
     command: ["npm", "run", "seed"]
     environment:
-      DATABASE_URL: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable}
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +68,8 @@ services:
     # WEBHOOK_SECRET_ENCRYPTION_KEY isn't needed in dev; the api uses a built-in
     # dev key unless NODE_ENV=production. (copilot, pasted by FH — unverified)
     command: ["npx", "tsx", "apps/api/src/index.ts"]
+    env_file:
+      - .env.docker
     ports:
       - "3000:3000"
     environment:
@@ -81,12 +78,17 @@ services:
       # above, authenticate as that same role, which keeps local
       # onboarding to a single password instead of provisioning per-service
       # grants by hand.
-      DATABASE_URL: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable}
       # TODO(YA, Jan): give the api its own role before anything is hosted.
       SETTLEMENT_INTERNAL_URL: http://settlement:8091
+      SETTLEMENT_INTERNAL_TOKEN: ${SETTLEMENT_INTERNAL_TOKEN:-local-dev-only-token}
+      NODE_ENV: ${NODE_ENV:-development}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:8081}
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   settlement:
     build:
@@ -96,8 +98,11 @@ services:
     # set, so nothing extra is needed here for local runs.
     # FH: it exits at boot without the token for me. set it.
     command: ["./settlement", "daemon"]
+    env_file:
+      - .env.docker
     environment:
-      DATABASE_URL: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable}
+      SETTLEMENT_INTERNAL_TOKEN: ${SETTLEMENT_INTERNAL_TOKEN:-local-dev-only-token}
       # Batch close and scheme export get their own pool so a long close
       # can't starve the API's connections.
       # AM: PGCONN_SETTLEMENT is ignored while DATABASE_URL is set; kept for the
@@ -106,6 +111,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   reporting:
     build:
@@ -113,11 +120,37 @@ services:
       dockerfile: ops/Dockerfile.node
     # No subcommand = `worker`. (MK)
     command: ["npx", "tsx", "apps/reporting/src/index.ts"]
+    env_file:
+      - .env.docker
     environment:
-      DATABASE_URL: postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:-postgres://filspay:filspay_dev_password@postgres:5432/filspay?sslmode=disable}
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ..
+      dockerfile: ops/Dockerfile.web
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: ..
+      dockerfile: ops/Dockerfile.admin
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    ports:
+      - "8081:80"
+    depends_on:
+      - api
 
 volumes:
   filspay_pgdata:

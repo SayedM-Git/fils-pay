@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import { NotFoundError } from "../lib/errors.js";
+import { withTransaction } from "../db/withTransaction.js";
 
 /** @property outcome Validated against the two allowed values by the route schema. */
 export interface AcquirerCallbackInput {
@@ -25,29 +26,28 @@ interface TransactionMerchantRow {
  * a human decision to void/refund, exactly as today.
  */
 export async function applyAcquirerCallback(pool: Pool, callback: AcquirerCallbackInput): Promise<void> {
-  const txnResult = await pool.query<TransactionMerchantRow>(
-    `SELECT merchant_id FROM transactions WHERE id = $1`,
-    [callback.transactionId],
-  );
-  const txnRow = txnResult.rows[0];
-  if (!txnRow) {
-    throw new NotFoundError("transaction_not_found");
-  }
+  await withTransaction(pool, async (client) => {
+    const receipt = await client.query(
+      `INSERT INTO processed_acquirer_callbacks (callback_id, callback_type)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING callback_id`,
+      [callback.callbackId, callback.type],
+    );
+    if (receipt.rowCount === 0) return;
 
-  await pool.query(
-    `INSERT INTO acquirer_callback_notes
-        (transaction_id, merchant_id, callback_id, callback_type, outcome, note, received_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      callback.transactionId,
-      txnRow.merchant_id,
-      callback.callbackId,
-      callback.type,
-      callback.outcome,
-      callback.note,
-      callback.occurredAt,
-    ],
-  );
+    const txnResult = await client.query<TransactionMerchantRow>(
+      `SELECT merchant_id FROM transactions WHERE id = $1`,
+      [callback.transactionId],
+    );
+    const txnRow = txnResult.rows[0];
+    if (!txnRow) throw new NotFoundError("transaction_not_found");
+
+    await client.query(
+      `INSERT INTO acquirer_callback_notes
+          (transaction_id, merchant_id, callback_id, callback_type, outcome, note, received_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [callback.transactionId, txnRow.merchant_id, callback.callbackId, callback.type, callback.outcome, callback.note, callback.occurredAt],
+    );
+  });
 }
 
 /**

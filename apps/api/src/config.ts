@@ -118,6 +118,8 @@ export interface Config {
   acquirerCallbackSigningSecret: string;
   /** Set true once the sandbox signs everything. */
   acquirerCallbackRequireSignature: boolean;
+  /** Exact browser origins allowed to use credentialed dashboard requests. */
+  allowedOrigins: string[];
 }
 
 function parseNodeEnv(value: string | undefined): Config["nodeEnv"] {
@@ -256,6 +258,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webhookRequestTimeoutMs: parseIntEnv(env.WEBHOOK_REQUEST_TIMEOUT_MS, 10_000),
 
     acquirerCallbackSigningSecret,
-    acquirerCallbackRequireSignature: parseBoolEnv(env.ACQUIRER_CALLBACK_REQUIRE_SIGNATURE, false),
+    acquirerCallbackRequireSignature: parseBoolEnv(env.ACQUIRER_CALLBACK_REQUIRE_SIGNATURE, true),
+    allowedOrigins: (env.ALLOWED_ORIGINS ?? "http://localhost:5173,http://localhost:5174")
+      .split(",").map((origin) => origin.trim()).filter(Boolean),
   };
 }

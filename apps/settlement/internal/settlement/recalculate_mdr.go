@@ -64,7 +64,7 @@ func RecalculateMDR(ctx context.Context, db *pgxpool.Pool, merchantID uuid.UUID,
 		SELECT id, batch_date, status, gross_fils, fee_fils, net_payout_fils
 		  FROM settlement_batches
 		 WHERE merchant_id = $1 AND batch_date >= $2 AND batch_date < $3
-		   AND status <> 'open'
+		   AND status = 'closed'
 		 ORDER BY batch_date
 		 FOR UPDATE
 	`, merchantID, from, to)
@@ -159,7 +159,14 @@ func recomputeBatchFee(ctx context.Context, tx pgx.Tx, batchID uuid.UUID, mdrBps
 	if err := rows.Err(); err != nil {
 		return 0, fmt.Errorf("settlement: RecalculateMDR: iterate batch events for %s: %w", batchID, err)
 	}
-	return fee, nil
+	var refundedFee int64
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(SUM(fee_reversed_fils), 0)
+		  FROM refunds WHERE settlement_batch_id = $1 AND status = 'succeeded'
+	`, batchID).Scan(&refundedFee); err != nil {
+		return 0, fmt.Errorf("settlement: RecalculateMDR: sum refund fee reversals for %s: %w", batchID, err)
+	}
+	return fee - money.Fils(refundedFee), nil
 }
 
 // postMdrAdjustment posts the two-leg, entry_group_id-balanced pair for one

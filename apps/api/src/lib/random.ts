@@ -1,9 +1,9 @@
-/** Generates a string of `n` random decimal digits (e.g. "042817"). */
+import { randomInt } from "node:crypto";
+
+/** Generates a string of `n` cryptographically random decimal digits (e.g. "042817"). */
 export function randomDigits(n: number): string {
-  const max = 10 ** n;
-  return Math.floor(Math.random() * max)
-    .toString()
-    .padStart(n, "0");
+  if (!Number.isInteger(n) || n < 1) throw new RangeError("randomDigits: length must be a positive integer");
+  return Array.from({ length: n }, () => randomInt(0, 10).toString()).join("");
 }
 
 /** Generates a string of `n` characters drawn uniformly from `alphabet`. */

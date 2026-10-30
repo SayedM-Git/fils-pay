@@ -33,8 +33,16 @@ export function signPayload(
   secret: string,
   timestamp: number = Math.floor(Date.now() / 1000),
 ): SignedPayload {
-  const signedString = `${timestamp}.${canonicalJson(payload)}`;
-  const signature = createHmac("sha256", secret).update(signedString).digest("hex");
+  return signRawBody(canonicalJson(payload), secret, timestamp);
+}
+
+/** Signs the exact UTF-8 JSON bytes that the HTTP transport sends. */
+export function signRawBody(
+  body: string,
+  secret: string,
+  timestamp: number = Math.floor(Date.now() / 1000),
+): SignedPayload {
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`, "utf8").digest("hex");
   return { timestamp, signature: `t=${timestamp},v1=${signature}` };
 }
 

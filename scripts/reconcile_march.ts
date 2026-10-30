@@ -3,7 +3,8 @@
  * One-off March 2026 reconciliation sweep. Finance wants the scheme
  * rounding residue (the gap between what gets journaled at capture and
  * what the scheme export can actually carry at 2 decimal places) written
- * off for March before the books close on it. Run manually, once — see
+ * off for March before the books close on it. A database run key prevents
+ * duplicate postings when the script is retried.
  * scripts/out/reconcile-2026-03.log for the last real run's output.
  *
  * Usage: DATABASE_URL=postgres://... npx tsx scripts/reconcile_march.ts
@@ -14,7 +15,13 @@ import { Client } from "pg";
 import { formatBhd, toFils } from "@filspay/money";
 
 export function monthBounds(year: number, month: number): { start: Date; end: Date } {
-  return { start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month, 1)) };
+  const monthText = String(month).padStart(2, "0");
+  const next = new Date(Date.UTC(year, month, 1));
+  const nextText = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  return {
+    start: new Date(`${year}-${monthText}-01T00:00:00+03:00`),
+    end: new Date(`${nextText}T00:00:00+03:00`),
+  };
 }
 
 export interface ResidueRow {
@@ -36,15 +43,23 @@ interface MerchantResidue {
 }
 
 async function fetchResidueRows(client: Client, year: number, month: number): Promise<ResidueRow[]> {
-  const { start, end } = monthBounds(year, month);
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const next = new Date(Date.UTC(year, month, 1));
+  const endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01`;
   const result = await client.query<{ merchant_id: string; captured_fils: string }>(
-    `SELECT merchant_id, captured_fils
-       FROM transactions
-      WHERE captured_fils > 0
-        AND captured_fils % 10 <> 0
-        AND occurred_at >= $1 AND occurred_at < $2
-      ORDER BY merchant_id, occurred_at`,
-    [start.toISOString(), end.toISOString()],
+    `SELECT t.merchant_id, SUM(te.amount_fils)::text AS captured_fils
+       FROM scheme_export_lines sel
+       JOIN settlement_batches sb ON sb.id = sel.settlement_batch_id
+       JOIN transactions t ON t.id = sel.transaction_id
+       JOIN transaction_events te
+         ON te.transaction_id = sel.transaction_id
+        AND te.settlement_batch_id = sel.settlement_batch_id
+        AND te.event_type IN ('captured', 'partially_captured')
+      WHERE sb.batch_date >= $1::date AND sb.batch_date < $2::date
+      GROUP BY t.merchant_id, sel.settlement_batch_id, sel.transaction_id, sel.amount_fils
+     HAVING SUM(te.amount_fils) > sel.amount_fils
+      ORDER BY t.merchant_id`,
+    [startDate, endDate],
   );
   return result.rows.map((r) => ({ merchantId: r.merchant_id, capturedFils: Number(r.captured_fils) }));
 }
@@ -75,8 +90,8 @@ async function postResidueCorrection(client: Client, merchant: MerchantResidue, 
   const description = "March 2026 scheme rounding residue sweep — manual recon per finance";
   await client.query(
     `INSERT INTO ledger_entries (entry_group_id, merchant_id, account_id, direction, amount_fils, occurred_at, description)
-     VALUES ($1, $2, 'merchant_payable', 'debit', $3, $4, $5),
-            ($1, $2, 'scheme_rounding_residue', 'credit', $3, $4, $5)`,
+     VALUES ($1, $2, 'scheme_rounding_residue', 'debit', $3, $4, $5),
+            ($1, $2, 'card_scheme_clearing', 'credit', $3, $4, $5)`,
     [entryGroupId, merchant.merchantId, merchant.residueFils, now.toISOString(), description],
   );
 }
@@ -105,6 +120,16 @@ async function main(): Promise<void> {
 
     await client.query("BEGIN");
     try {
+      const runClaim = await client.query(
+        `INSERT INTO one_off_reconciliation_runs (run_key, detail)
+         VALUES ('reconcile_march_2026', 'March 2026 scheme rounding residue')
+         ON CONFLICT (run_key) DO NOTHING RETURNING run_key`,
+      );
+      if (runClaim.rowCount === 0) {
+        await client.query("ROLLBACK");
+        console.log("This reconciliation has already been applied; no entries were changed.");
+        return;
+      }
       for (const merchant of merchantResidues) {
         await postResidueCorrection(client, merchant, now);
         console.log(

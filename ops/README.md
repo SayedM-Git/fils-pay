@@ -1,21 +1,20 @@
 # ops/
 
-Local development stack for FilsPay: Postgres plus the three services that
-talk to it directly (apps/api, apps/settlement, apps/reporting). The hosted
-demo instance uses the same compose file with a different `.env`.
+Local and hosted container stack for FilsPay: Postgres, API, settlement, reporting, checkout, and admin web apps. Set production secrets and public URLs through the environment before using it outside a local development network.
 
 ## Quick start
 
 ```
 docker compose -f ops/docker-compose.yml up -d postgres
 docker compose -f ops/docker-compose.yml run --rm migrate
-docker compose -f ops/docker-compose.yml run --rm seed
-docker compose -f ops/docker-compose.yml up api settlement reporting
+docker compose -f ops/docker-compose.yml --profile dev-seed run --rm seed
+docker compose -f ops/docker-compose.yml up --build api settlement reporting web admin
 ```
 
-apps/web and apps/admin aren't part of this compose file — they're plain
-Vite dev servers that talk to apps/api over HTTP (`npm run dev` inside
-each package), not services with their own database connection.
+The seed job is opt-in under the `dev-seed` profile because it resets fixture
+data. The web apps are built into Nginx containers and exposed on ports 8080
+(checkout) and 8081 (admin). Point `VITE_API_BASE_URL` at the API address used
+by browsers, and configure `ALLOWED_ORIGINS` to include the public web origins.
 
 ## Files
 
@@ -23,8 +22,10 @@ each package), not services with their own database connection.
 |---|---|
 | `docker-compose.yml` | the stack |
 | `.env.docker` | shared service settings, loaded by compose for every service |
-| `Dockerfile.node` | image for api, reporting, migrate and seed (`node:20`, full install) |
+| `Dockerfile.node` | image for api, reporting, migrate and seed |
 | `Dockerfile.go` | multi-stage build of `apps/settlement` |
+| `Dockerfile.web`, `Dockerfile.admin` | Vite builds served by Nginx |
+| `nginx-spa.conf` | client-side route fallback |
 
 > **AM (July):** the two Dockerfiles aren't in the repo for me. built my own
 >
@@ -65,8 +66,6 @@ first.
 
 ## Resource sizing
 
-The hosted demo box is 0.5 vCPU / 2 GB RAM / 2 GB disk; the API container is
-limited to 512 MB. Postgres defaults are fine at this size. The settlement
-image is built on the box with `go build` from `Dockerfile.go`.
+For deployment, set unique database credentials, `DATABASE_URL`, `SETTLEMENT_INTERNAL_TOKEN`, `WEBHOOK_SECRET_ENCRYPTION_KEY`, `ACQUIRER_CALLBACK_SIGNING_SECRET`, `ALLOWED_ORIGINS`, and the browser-visible `VITE_API_BASE_URL`. Use the hosting provider’s managed secrets and database settings. The compose defaults are for local development only.
 
 > **AM:** first build on the box filled the disk (go build cache). cleared it and it went through on the second try
