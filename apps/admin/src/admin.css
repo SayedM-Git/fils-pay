@@ -1,228 +1,103 @@
-/* No design system, no UI kit — the same "real but small" minimalism
-   apps/web's checkout page ships with. Just enough for dense operational
-   tables to be readable and for the impersonation banner to be impossible
-   to overlook. */
-
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 15px;
-  color: #1a1a1a;
-  background: #fafafa;
+/* Lightweight design system for every FilsPay operations screen. */
+:root {
+  --ink: #202925;
+  --muted: #68736d;
+  --line: #e1e8d9;
+  --surface: #ffffff;
+  --canvas: #f7f9f3;
+  --accent: #103b2c;
+  --lime: #c4ef65;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202925;
+  background: #f7f9f3;
+  font-size: 14px;
+  line-height: 1.55;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
-}
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; background: #f5f7f5; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+a { color: #176b4a; }
 
-.admin-shell {
-  min-height: 100vh;
-}
-
+.admin-shell { --ink: #202925; --muted: #68736d; --line: #e1e8d9; --surface: #fff; --accent: #103b2c; --lime: #c4ef65; min-height: 100vh; color: var(--ink); }
 .admin-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
-  background: #fff;
-  border-bottom: 1px solid #ddd;
-}
-
-.admin-brand {
-  font-weight: 700;
-}
-
-.admin-nav {
-  display: flex;
-  gap: 1rem;
-}
-
-.admin-nav a {
-  color: #1a1a1a;
-  text-decoration: none;
-}
-
-.admin-nav a.active {
-  font-weight: 700;
-  text-decoration: underline;
-}
-
-.admin-identity {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.admin-role-chip {
-  padding: 0.1rem 0.4rem;
-  border: 1px solid #999;
-  border-radius: 3px;
-  font-size: 0.8em;
-}
-
-.admin-main {
-  max-width: 70rem;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-
-.admin-centered {
-  max-width: 26rem;
-  margin: 4rem auto;
-  padding: 1.5rem;
-}
-
-.admin-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin: 1rem 0;
-  max-width: 40rem;
-}
-
-.admin-form-inline {
-  flex-direction: row;
-  align-items: flex-end;
-}
-
-.admin-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.admin-form input,
-.admin-form select,
-.admin-form textarea {
-  padding: 0.4rem;
-  font: inherit;
-  border: 1px solid #bbb;
-  border-radius: 3px;
-}
-
-/* MK: global button style, temporary until the design system (Nov 2025) */
-button {
-  padding: 0.4rem 0.8rem;
-  font: inherit;
-  cursor: pointer;
-  border: 1px solid #888;
-  border-radius: 3px;
-  background: #fff;
-}
-
-button:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.admin-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  border: 1px solid #ddd;
-  padding: 0.5rem 0.75rem;
-  margin: 1rem 0;
-}
-
-.admin-filters label {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.admin-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-  background: #fff;
-}
-
-.admin-table th,
-.admin-table td {
-  border: 1px solid #e0e0e0;
-  padding: 0.4rem 0.6rem;
-  text-align: left;
-  vertical-align: top;
-}
-
-.admin-dl {
-  display: grid;
-  grid-template-columns: 12rem 1fr;
-  gap: 0.25rem 1rem;
-  margin: 1rem 0;
-}
-
-.admin-dl dt {
-  font-weight: 600;
-}
-
-.admin-dl dd {
-  margin: 0;
-}
-
-.admin-muted {
-  color: #666;
-}
-
-.admin-error {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #b00020;
-  background: #fdeaea;
-  color: #7a0016;
-}
-
-.admin-notice {
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #2a6f2a;
-  background: #eef7ee;
-  margin: 1rem 0;
-}
-
-.admin-confirm {
-  padding: 0.8rem;
-  border: 2px solid #b06000;
-  background: #fff6e8;
-  margin: 1rem 0;
-  max-width: 40rem;
-}
-
-.admin-id-list {
-  max-height: 14rem;
-  overflow-y: auto;
-}
-
-/* Deliberately loud: an active impersonation grant must never be something
-   an operator can fail to notice. */
-.impersonation-banner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: #7a0016;
-  color: #fff;
-  border-bottom: 4px solid #ffcc00;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 5;
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 4vw;
+  border-bottom: 1px solid var(--line);
+  background: rgb(255 255 255 / 94%);
+  backdrop-filter: blur(12px);
 }
+.admin-brand { display: flex; flex: 0 0 auto; align-items: center; gap: 0.65rem; color: var(--ink); font-size: 1.03rem; font-weight: 750; letter-spacing: -0.04em; }
+.admin-brand::before { display: grid; width: 1.7rem; height: 1.7rem; place-items: center; border-radius: 0.55rem; color: var(--accent); background: var(--lime); content: "F"; font-size: 0.85rem; letter-spacing: 0; }
+.admin-nav { display: flex; flex: 1 1 auto; align-items: center; gap: 0.25rem; min-width: 0; }
+.admin-nav a { padding: 0.52rem 0.72rem; border-radius: 0.55rem; color: #53605a; font-size: 0.88rem; font-weight: 550; text-decoration: none; white-space: nowrap; transition: background 120ms ease, color 120ms ease; }
+.admin-nav a:hover,.admin-nav a.active { color: var(--accent); background: #f0f8df; }
+.admin-nav a.active { font-weight: 700; }
+.admin-identity { display: flex; flex: 0 0 auto; align-items: center; gap: 0.8rem; color: #47534d; font-size: 0.83rem; }
+.admin-role-chip { display: inline-block; margin-left: 0.25rem; padding: 0.15rem 0.48rem; border: 1px solid var(--line); border-radius: 999px; color: #52645a; background: #f8faf8; font-size: 0.72rem; font-weight: 650; }
+.admin-main { width: min(100% - 3rem, 1280px); margin: 0 auto; padding: 2.5rem 0 5rem; }
+.admin-main > section { min-width: 0; }
+.admin-main h1,.admin-centered h1 { margin: 0 0 1.35rem; color: var(--ink); font-size: clamp(1.65rem, 2.4vw, 2.15rem); font-weight: 680; letter-spacing: -0.045em; line-height: 1.2; }
+.admin-main h2 { margin: 2.5rem 0 0.85rem; color: var(--ink); font-size: 1.15rem; font-weight: 650; letter-spacing: -0.025em; }
+.admin-main h3 { color: var(--ink); font-size: 1rem; font-weight: 650; }
+.admin-main p { color: #49564f; }
+.admin-centered { width: min(100% - 2rem, 440px); margin: clamp(3rem, 10vh, 7rem) auto; padding: 2.3rem; border: 1px solid var(--line); border-radius: 1rem; color: var(--ink); background: white; box-shadow: 0 14px 40px rgb(30 52 40 / 6%); }
+.admin-centered h1 { margin-bottom: 0.35rem; font-size: 1.7rem; }
 
-.impersonation-banner code {
-  color: #ffe;
+.admin-form { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 720px; margin: 1.5rem 0; }
+.admin-form-inline { flex-direction: row; flex-wrap: wrap; align-items: flex-end; max-width: none; }
+.admin-form label,.admin-filters label { display: flex; flex-direction: column; gap: 0.4rem; color: #39463f; font-size: 0.84rem; font-weight: 600; }
+.admin-form input,.admin-form select,.admin-form textarea,.admin-filters input,.admin-filters select { min-height: 42px; padding: 0.58rem 0.72rem; border: 1px solid #d6ded8; border-radius: 0.55rem; outline: none; color: var(--ink); background: #fff; font: inherit; font-weight: 450; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.admin-form input:focus,.admin-form select:focus,.admin-form textarea:focus,.admin-filters input:focus,.admin-filters select:focus { border-color: #459675; box-shadow: 0 0 0 3px rgb(23 107 74 / 12%); }
+button { min-height: 40px; padding: 0.55rem 0.95rem; border: 1px solid var(--accent); border-radius: 0.55rem; color: #fff; background: var(--accent); font: inherit; font-size: 0.86rem; font-weight: 650; cursor: pointer; transition: background 120ms ease, transform 120ms ease; }
+button:hover { background: #082b20; }
+button:active { transform: translateY(1px); }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+.admin-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.85rem; margin: 1.4rem 0 1.2rem; padding: 1rem; border: 1px solid var(--line); border-radius: 0.85rem; background: white; }
+.admin-filters label { flex-direction: row; align-items: center; gap: 0.5rem; }
+.admin-table { width: 100%; margin: 1.15rem 0 2rem; border: 1px solid var(--line); border-collapse: separate; border-spacing: 0; border-radius: 0.8rem; overflow: hidden; background: white; font-size: 0.88rem; }
+.admin-table th,.admin-table td { padding: 0.82rem 0.95rem; border-bottom: 1px solid #edf0ed; text-align: left; vertical-align: middle; }
+.admin-table th { color: #69756e; background: #fafcfb; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.055em; text-transform: uppercase; white-space: nowrap; }
+.admin-table tr:last-child td { border-bottom: 0; }
+.admin-table tbody tr:hover { background: #f8fbf9; }
+.admin-table a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.admin-table a:hover { text-decoration: underline; }
+.admin-dl { display: grid; grid-template-columns: minmax(10rem, 0.35fr) 1fr; gap: 0.7rem 1.5rem; margin: 1.4rem 0; padding: 1.3rem; border: 1px solid var(--line); border-radius: 0.8rem; background: white; }
+.admin-dl dt { color: var(--muted); font-size: 0.85rem; }
+.admin-dl dd { margin: 0; color: var(--ink); font-weight: 550; overflow-wrap: anywhere; }
+.admin-muted { color: var(--muted) !important; }
+.admin-error,.admin-notice,.admin-confirm { margin: 1rem 0; padding: 0.85rem 1rem; border: 1px solid; border-radius: 0.7rem; }
+.admin-error { border-color: #f0c4bf; color: #8c342a; background: #fff4f2; }
+.admin-notice { border-color: #c8e2d2; color: #235b3e; background: #f0f8f3; }
+.admin-confirm { max-width: 52rem; border-color: #ead5ad; color: #6d4d16; background: #fff9ed; }
+.admin-id-list { max-height: 14rem; overflow-y: auto; }
+
+/* Impersonation stays visually unmistakable while using the same restrained palette. */
+.impersonation-banner { position: sticky; top: 70px; z-index: 4; display: flex; align-items: center; gap: 1rem; padding: 0.8rem 4vw; border-bottom: 1px solid #d5b977; color: #473915; background: #fff4d7; }
+.impersonation-banner code { color: inherit; }
+.impersonation-banner button { margin-left: auto; border-color: #7b5a17; color: #fff; background: #7b5a17; white-space: nowrap; }
+.impersonation-banner-error { margin-top: 0.4rem; font-weight: 700; }
+
+@media (max-width: 1050px) {
+  .admin-header { flex-wrap: wrap; gap: 0.65rem 1.2rem; padding: 0.8rem 1.25rem; }
+  .admin-nav { order: 3; flex-basis: 100%; overflow-x: auto; padding-bottom: 0.2rem; }
+  .admin-identity { margin-left: auto; }
 }
-
-.impersonation-banner button {
-  margin-left: auto;
-  background: #fff;
-  color: #7a0016;
-  font-weight: 700;
-  border-color: #fff;
-  white-space: nowrap;
-}
-
-.impersonation-banner-error {
-  margin-top: 0.4rem;
-  font-weight: 700;
+@media (max-width: 640px) {
+  .admin-main { width: min(100% - 1.5rem, 1280px); padding-top: 1.6rem; }
+  .admin-centered { margin: 1.5rem auto; padding: 1.4rem; }
+  .admin-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .admin-dl { grid-template-columns: 1fr; gap: 0.2rem; }
+  .admin-dl dd { margin-bottom: 0.7rem; }
+  .impersonation-banner { top: 96px; flex-wrap: wrap; padding: 0.75rem 1rem; }
 }
